@@ -3,6 +3,8 @@ import os
 import random
 from network import example_network
 from keras import optimizers
+import heapq
+
 
 def read_pdb(filename):
     with open(filename, 'r') as file:
@@ -56,6 +58,7 @@ def temp_add(temp, X_list, Y_list, Z_list, atomtype_list, flag):
                     temp[k][m][n] = [1, 0, 1, 1]
                 else:
                     temp[k][m][n] = [1, 0, 1, 0]
+                # temp[k][m][n] += np.array([1, 0, 1, 0])
             else:
                 if temp[k][m][n][1] == 1:
                     temp[k][m][n] = [1, 1, 0, 1]
@@ -65,6 +68,7 @@ def temp_add(temp, X_list, Y_list, Z_list, atomtype_list, flag):
                     temp[k][m][n] = [1, 0, 1, 1]
                 else:
                     temp[k][m][n] = [1, 0, 0, 1]
+                # temp[k][m][n] += np.array([1, 0, 0, 1])
         else:
             if atomtype_list[j] == 'h':
                 if temp[k][m][n][0] == 1:
@@ -75,6 +79,7 @@ def temp_add(temp, X_list, Y_list, Z_list, atomtype_list, flag):
                     temp[k][m][n] = [0, 1, 1, 1]
                 else:
                     temp[k][m][n] = [0, 1, 1, 0]
+                # temp[k][m][n] += np.array([0, 1, 1, 0])
             else:
                 if temp[k][m][n][0] == 1:
                     temp[k][m][n] = [1, 1, 0, 1]
@@ -84,6 +89,7 @@ def temp_add(temp, X_list, Y_list, Z_list, atomtype_list, flag):
                     temp[k][m][n] = [0, 1, 1, 1]
                 else:
                     temp[k][m][n] = [0, 1, 0, 1]
+                # temp[k][m][n] += np.array([0, 1, 0, 1])
 
 
 def one_train_x(subject_path, corr_legend):
@@ -95,8 +101,11 @@ def one_train_x(subject_path, corr_legend):
     return temp
 
 
-def get_random(limit):
-    rom_legend_file_num = random.randint(1, limit)
+def get_random(up_limit, value_limit):
+    rom_legend_file_num = random.randint(1, up_limit)
+    while rom_legend_file_num == value_limit:
+        rom_legend_file_num = random.randint(1, up_limit)
+
     if rom_legend_file_num >= 1000:
         return str(rom_legend_file_num)
     if rom_legend_file_num >= 100:
@@ -120,21 +129,19 @@ def dataset_read(foldname):
 
             num = 2
 
-            if int(subject_path[14:18]) < 1655:
+            if int(subject_path[14:18]) < 2700:
                 tem_name = subject_path[14:18] + '_lig_cg.pdb'
                 corr_legend = os.path.join(subject_path[0:14], tem_name)
                 temp_r = one_train_x(subject_path, corr_legend)
                 train_x.append(temp_r)
+                train_y.append([1])
 
                 for i in range(num):
-                    rom_legend_file_num = get_random(2069)
+                    rom_legend_file_num = get_random(3000, int(subject_path[14:18]))
                     tem_name = str(rom_legend_file_num) + '_lig_cg.pdb'
                     corr_legend = os.path.join(subject_path[0:14], tem_name)
                     temp_f = one_train_x(subject_path, corr_legend)
                     train_x.append(temp_f)
-
-                train_y.append([1])
-                for i in range(num):
                     train_y.append([0])
 
             else:
@@ -142,20 +149,21 @@ def dataset_read(foldname):
                 corr_legend = os.path.join(subject_path[0:14], tem_name)
                 temp_r = one_train_x(subject_path, corr_legend)
                 test_x.append(temp_r)
-                num = 2
-                # 2069 - 1654
+                test_y.append([1])
+
+                num = 3000 - 2699
+
                 for i in range(num):
-                    # rom_legend_file_num = 1655 + i
-                    rom_legend_file_num = get_random(1655)
+                    rom_legend_file_num = 2700 + i
+                    if rom_legend_file_num == int(subject_path[14:18]):
+                        continue
                     tem_name = str(rom_legend_file_num) + '_lig_cg.pdb'
                     corr_legend = os.path.join(subject_path[0:14], tem_name)
                     temp_f = one_train_x(subject_path, corr_legend)
                     test_x.append(temp_f)
 
-                test_y.append([1])
-                for i in range(num):
+                for i in range(num - 1):
                     test_y.append([0])
-
 
             # count = 0
             # for k in range(32):
@@ -198,19 +206,31 @@ adam = optimizers.Adam(lr=0.0001)
 model.compile(optimizer=adam,
               loss='binary_crossentropy',
               metrics=['accuracy'])
-model.fit(x=train_x, y=train_y, epochs=50, verbose=1, batch_size=20)
+model.fit(x=train_x, y=train_y, epochs=50, verbose=1, batch_size=15)
+
+model.save('model.h5')
+
 loss, acc = model.evaluate(x=test_x, y=test_y)
 print(loss, acc)
 
-# out = []
-# for i in range(2):
-#     pre = model.predict(np.expand_dims(train_x[i], axis=0))
-#     out.append(pre[0])
-# out = np.array(out)
-#
-# print(out)
-# print(out.max())
+num_pro = 3000 - 2699
+num_lig = 3000 - 2699
 
+count = 0
+
+for i in range(num_pro):
+    out = []
+    for j in range(num_lig):
+        pre = model.predict(np.expand_dims(test_x[i*num_lig+j], axis=0))
+        out.append(pre[0])
+    out = np.array(out).reshape((1,len(out)))[0]
+    out = heapq.nlargest(10, range(len(out)), out.take)
+    # print(out)
+    if 0 in out:
+        count += 1
+
+print(count)
+print(count / num_lig)
 
 # 310.935 -244.401 555.336 (2795377,)
 # 432.956 -186.407 619.363 (2795377,)
