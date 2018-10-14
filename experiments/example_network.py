@@ -35,6 +35,9 @@ def example_network(input_shape=(21,21,21,19), class_num=10):
     t = Activation('relu')(t)
     t = Dropout(0.5)(t)
 
+    t = Dense(1)(t)
+    output = Activation('sigmoid')(t)
+
     # output = Activation('softmax')(t)
 
     model = Model(input=im_input, output=output)
